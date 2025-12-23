@@ -1,353 +1,671 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { api } from "../api/axios";
 import { CATEGORIES } from "../constants/categories";
 
-export default function AddItemModal({ open, onClose, onSubmit }) {
-  const [form, setForm] = useState({
+export default function AddItemModal({ open, onClose, onCreated }) {
+  const baseUrl = import.meta.env.VITE_BASE_URL ?? "http://localhost:8080";
+
+  const [product, setProduct] = useState({
     name: "",
     brand: "",
-    category: "",
     description: "",
     price: "",
-    stockQty: "",
+    category: "",
+    stockQuantity: "",
     releaseDate: "",
-    available: true,
-    imageFile: null,
+    productAvailable: false,
   });
 
-  const [aiDescLoading, setAiDescLoading] = useState(false);
-  const [aiImgLoading, setAiImgLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [validated, setValidated] = useState(false);
 
-  // ✅ prevent background scroll
-  useEffect(() => {
-    if (open) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
-    return () => (document.body.style.overflow = "");
-  }, [open]);
+  const [imageFile, setImageFile] = useState(null); // user uploaded
+  const [aiImage, setAiImage] = useState(null); // { blob, url }
+  const [previewUrl, setPreviewUrl] = useState("");
 
-  // ✅ ESC close
+  const [submitting, setSubmitting] = useState(false);
+
+  // AI prompt modal inside add modal (sheet)
+  const [aiPromptOpen, setAiPromptOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [generatingProduct, setGeneratingProduct] = useState(false);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
+
+  // close on ESC
   useEffect(() => {
-    function onKeyDown(e) {
-      if (e.key === "Escape") onClose();
-    }
-    if (open) window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose?.();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // reset on open
+  // Cleanup preview urls (AI image object URL)
   useEffect(() => {
-    if (open) {
-      setForm({
+    return () => {
+      if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
+    };
+  }, [aiImage]);
+
+  const canGenerateDescription = Boolean(product.name.trim() && product.category);
+  const canGenerateImage = Boolean(
+    product.name.trim() && product.category && product.description.trim()
+  );
+
+  const setField = (name, value) => {
+    setProduct((p) => ({ ...p, [name]: value }));
+    if (errors[name]) setErrors((e) => ({ ...e, [name]: null }));
+  };
+
+  const validateForm = () => {
+    const e = {};
+
+    if (!product.name.trim()) e.name = "Product name is required";
+    if (!product.brand.trim()) e.brand = "Brand is required";
+
+    if (!product.price) e.price = "Price is required";
+    else if (Number(product.price) <= 0) e.price = "Price must be greater than zero";
+
+    if (!product.category) e.category = "Please select a category";
+
+    if (product.stockQuantity === "") e.stockQuantity = "Stock quantity is required";
+    else if (Number(product.stockQuantity) < 0) e.stockQuantity = "Stock quantity cannot be negative";
+
+    if (!product.releaseDate) e.releaseDate = "Release date is required";
+
+    // image upload validation only if user uploads
+    if (imageFile) {
+      const validTypes = ["image/jpeg", "image/png"];
+      if (!validTypes.includes(imageFile.type)) {
+        e.image = "Please select a valid image file (JPEG or PNG)";
+      } else if (imageFile.size > 5 * 1024 * 1024) {
+        e.image = "Image size should be less than 5MB";
+      }
+    }
+
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const onImagePick = (file) => {
+    setValidated(false);
+    setErrors((e) => ({ ...e, image: null }));
+
+    setImageFile(file || null);
+
+    // if user uploads, clear AI image
+    if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
+    setAiImage(null);
+
+    if (!file) {
+      setPreviewUrl("");
+      return;
+    }
+
+    const validTypes = ["image/jpeg", "image/png"];
+    if (!validTypes.includes(file.type)) {
+      setErrors((e) => ({ ...e, image: "Please select a valid image file (JPEG or PNG)" }));
+    } else if (file.size > 5 * 1024 * 1024) {
+      setErrors((e) => ({ ...e, image: "Image size should be less than 5MB" }));
+    }
+
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+  };
+
+  // ✅ AI: generate description
+  const generateDescription = async () => {
+    if (!canGenerateDescription) return;
+    setGeneratingDescription(true);
+    try {
+      const res = await api.post(
+        `${baseUrl}/api/product/generate-description`,
+        null,
+        { params: { name: product.name, category: product.category } }
+      );
+
+      const text = typeof res.data === "string" ? res.data : String(res.data);
+      setProduct((p) => ({ ...p, description: text }));
+    } catch (err) {
+      console.error(err);
+      setErrors((e) => ({ ...e, _top: "Failed to generate description." }));
+    } finally {
+      setGeneratingDescription(false);
+    }
+  };
+
+  // ✅ AI: generate image (arraybuffer)
+  const generateImage = async () => {
+    if (!canGenerateImage) return;
+    setGeneratingImage(true);
+    try {
+      const res = await api.post(
+        `${baseUrl}/api/product/generate-image`,
+        null,
+        {
+          params: {
+            name: product.name,
+            category: product.category,
+            description: product.description,
+          },
+          responseType: "arraybuffer",
+        }
+      );
+
+      const blob = new Blob([res.data], { type: "image/jpeg" });
+      const url = URL.createObjectURL(blob);
+
+      // clear any user file preview url
+      if (previewUrl && imageFile) URL.revokeObjectURL(previewUrl);
+
+      setImageFile(null);
+      setAiImage({ blob, url });
+      setPreviewUrl(url);
+      setErrors((e) => ({ ...e, image: null }));
+    } catch (err) {
+      console.error(err);
+      setErrors((e) => ({ ...e, _top: "Failed to generate image." }));
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
+  // ✅ AI: generate full product from prompt
+  const generateProductFromPrompt = async () => {
+    if (!aiPrompt.trim()) return;
+    setGeneratingProduct(true);
+    try {
+      const res = await api.post(
+        `${baseUrl}/api/product/generate-product?query=${encodeURIComponent(aiPrompt)}`
+      );
+
+      const p = res.data || {};
+      setProduct({
+        name: p.name || "",
+        brand: p.brand || "",
+        description: p.description || "",
+        price: p.price || "",
+        category: p.category || "",
+        stockQuantity: p.stockQuantity || "",
+        releaseDate: p.releaseDate || "",
+        productAvailable: Boolean(p.productAvailable),
+      });
+
+      setAiPrompt("");
+      setAiPromptOpen(false);
+      setErrors({});
+      setValidated(false);
+    } catch (err) {
+      console.error(err);
+      setErrors((e) => ({ ...e, _top: "Failed to generate product." }));
+    } finally {
+      setGeneratingProduct(false);
+    }
+  };
+
+  // ✅ Submit multipart like your code
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setValidated(true);
+
+    const ok = validateForm();
+    if (!ok) return;
+
+    try {
+      setSubmitting(true);
+      setErrors((er) => ({ ...er, _top: "" }));
+
+      const formData = new FormData();
+
+      // choose image: user file > AI blob > none
+      if (imageFile) {
+        formData.append("imageFile", imageFile);
+      } else if (aiImage?.blob) {
+        const file = new File([aiImage.blob], "ai-generated-image.jpg", {
+          type: "image/jpeg",
+        });
+        formData.append("imageFile", file);
+      }
+
+      formData.append(
+        "product",
+        new Blob([JSON.stringify(product)], { type: "application/json" })
+      );
+
+      await api.post(`${baseUrl}/api/product`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      // reset
+      setProduct({
         name: "",
         brand: "",
-        category: "",
         description: "",
         price: "",
-        stockQty: "",
+        category: "",
+        stockQuantity: "",
         releaseDate: "",
-        available: true,
-        imageFile: null,
+        productAvailable: false,
       });
-      setAiDescLoading(false);
-      setAiImgLoading(false);
+
+      setErrors({});
+      setValidated(false);
+      setSubmitting(false);
+
+      if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
+      if (previewUrl && imageFile) URL.revokeObjectURL(previewUrl);
+
+      setImageFile(null);
+      setAiImage(null);
+      setPreviewUrl("");
+
+      onCreated?.(); // refresh list
+      onClose?.();   // close modal
+    } catch (err) {
+      console.error(err);
+      setErrors((e) => ({
+        ...e,
+        _top: "Error adding product. Please try again.",
+      }));
+      setSubmitting(false);
     }
-  }, [open]);
+  };
+
+  const inputBase =
+    "w-full rounded-xl border bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none " +
+    "border-gray-200 dark:border-gray-800 focus:border-gray-400 dark:focus:border-gray-600";
+
+  const labelBase = "text-xs font-medium text-gray-700 dark:text-gray-200";
 
   if (!open) return null;
 
-  const update = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
-  };
-
-  const updateFile = (e) => {
-    const file = e.target.files?.[0] || null;
-    setForm((p) => ({ ...p, imageFile: file }));
-  };
-
-  const canGenerateDesc = form.name.trim() && form.category.trim();
-  const canGenerateImage =
-    form.name.trim() && form.category.trim() && form.description.trim();
-
-  const handleGenerateDescription = () => {
-    if (!canGenerateDesc) return;
-    setAiDescLoading(true);
-    setTimeout(() => {
-      setForm((p) => ({
-        ...p,
-        description: `AI-generated description: ${p.name} (${p.category}). Premium design, modern build, and great value for daily use.`,
-      }));
-      setAiDescLoading(false);
-    }, 800);
-  };
-
-  const handleGenerateImage = () => {
-    if (!canGenerateImage) return;
-    setAiImgLoading(true);
-    setTimeout(() => {
-      alert("AI image generation will be connected to backend later.");
-      setAiImgLoading(false);
-    }, 700);
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    if (!form.name.trim()) return alert("Product name is required");
-    if (!form.brand.trim()) return alert("Brand is required");
-    if (!form.category.trim()) return alert("Category is required");
-    if (form.price === "" || Number.isNaN(Number(form.price)))
-      return alert("Valid price is required");
-    if (form.stockQty === "" || Number.isNaN(Number(form.stockQty)))
-      return alert("Valid stock quantity is required");
-    if (!form.releaseDate) return alert("Release date is required");
-
-    const payload = {
-      id: crypto?.randomUUID?.() ?? Date.now(),
-      title: form.name.trim(),
-      name: form.name.trim(),
-      brand: form.brand.trim(),
-      category: form.category,
-      description: form.description.trim(),
-      price: Number(form.price),
-      stockQty: Number(form.stockQty),
-      releaseDate: form.releaseDate,
-      available: form.available,
-      image: "",
-      imageFile: form.imageFile,
-    };
-
-    onSubmit?.(payload);
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-3 sm:px-6">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={onClose}
-      />
-
-      {/* ✅ Modal: full height on mobile with internal scroll */}
-      <div
-        className="
-          relative w-full max-w-4xl
-          max-h-[92dvh] sm:max-h-[88dvh]
-          rounded-2xl border border-gray-200 dark:border-gray-800
-          bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100
-          shadow-2xl
-          flex flex-col
-          overflow-hidden
-        "
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
       >
-        {/* ✅ Sticky header */}
-        <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg sm:text-xl font-semibold">Add New Product</h3>
-          <button
-            onClick={onClose}
-            className="rounded-md px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            ✕
-          </button>
-        </div>
+        {/* backdrop */}
+        <div
+          className="absolute inset-0 bg-black/60"
+          onClick={onClose}
+        />
 
-        {/* ✅ Scroll content area */}
-        <form
-          onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-5"
+        {/* modal */}
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 18, scale: 0.98 }}
+          transition={{ duration: 0.22 }}
+          className="
+            relative w-full max-w-4xl
+            rounded-2xl border border-gray-200 dark:border-gray-800
+            bg-white dark:bg-gray-900
+            shadow-xl overflow-hidden
+          "
+          style={{ height: "min(92dvh, 760px)" }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* header */}
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">Name</label>
-              <input
-                name="name"
-                value={form.name}
-                onChange={update}
-                placeholder="Product Name"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Brand</label>
-              <input
-                name="brand"
-                value={form.brand}
-                onChange={update}
-                placeholder="Enter your Brand"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Category</label>
-            <select
-              name="category"
-              value={form.category}
-              onChange={update}
-              className="mt-1 w-full md:w-1/2 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-            >
-              <option value="">Select category</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <label className="text-sm font-medium">
-                Description <span className="text-xs text-gray-500">(Optional)</span>
-              </label>
-
-              <button
-                type="button"
-                onClick={handleGenerateDescription}
-                disabled={!canGenerateDesc || aiDescLoading}
-                className={`rounded-md px-3 py-2 text-xs font-medium border transition
-                ${
-                  !canGenerateDesc || aiDescLoading
-                    ? "cursor-not-allowed border-gray-200 dark:border-gray-800 text-gray-400"
-                    : "border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                }`}
-              >
-                {aiDescLoading ? "Generating..." : "Generate with AI"}
-              </button>
-            </div>
-
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={update}
-              rows={4}
-              placeholder="Add product description (optional) or use AI to generate one"
-              className="mt-2 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-            />
-
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Fill in product name and category to enable AI description generation.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium">Price</label>
-              <div className="mt-1 flex">
-                <span className="inline-flex items-center px-3 rounded-l-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-200">
-                  ₹
-                </span>
-                <input
-                  name="price"
-                  value={form.price}
-                  onChange={update}
-                  type="number"
-                  step="0.01"
-                  placeholder="Enter price"
-                  className="w-full rounded-r-md border border-l-0 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-                />
+              <div className="text-lg font-semibold">Add New Product</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Create manually or use AI to speed up description & image.
               </div>
             </div>
 
-            <div>
-              <label className="text-sm font-medium">Stock Quantity</label>
-              <input
-                name="stockQty"
-                value={form.stockQty}
-                onChange={update}
-                type="number"
-                placeholder="Stock Remaining"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Release Date</label>
-              <input
-                name="releaseDate"
-                value={form.releaseDate}
-                onChange={update}
-                type="date"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <label className="text-sm font-medium">
-                Image <span className="text-xs text-gray-500">(Optional)</span>
-              </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAiPromptOpen(true)}
+                className="rounded-xl px-3 py-2 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition"
+              >
+                ✨ Generate with AI
+              </button>
 
               <button
                 type="button"
-                onClick={handleGenerateImage}
-                disabled={!canGenerateImage || aiImgLoading}
-                className={`rounded-md px-3 py-2 text-xs font-medium border transition
-                ${
-                  !canGenerateImage || aiImgLoading
-                    ? "cursor-not-allowed border-gray-200 dark:border-gray-800 text-gray-400"
-                    : "border-green-200 dark:border-green-900 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/40"
-                }`}
+                onClick={onClose}
+                className="rounded-xl px-3 py-2 text-xs font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
-                {aiImgLoading ? "Generating..." : "Generate with AI"}
+                Close
               </button>
             </div>
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={updateFile}
-              className="mt-2 block w-full text-sm text-gray-600 dark:text-gray-300
-                file:mr-4 file:rounded-md file:border-0
-                file:bg-gray-100 file:text-gray-800
-                dark:file:bg-gray-800 dark:file:text-gray-100
-                file:px-4 file:py-2 file:text-sm file:font-medium
-                hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
-            />
-
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Upload a product image (JPG, PNG) or generate one with AI.
-              <br />
-              Fill in name, category, and description to enable AI image generation.
-            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              id="available"
-              name="available"
-              checked={form.available}
-              onChange={update}
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 dark:border-gray-700"
-            />
-            <label htmlFor="available" className="text-sm">
-              Product Available
-            </label>
+          {/* body (scroll inside) */}
+          <div className="h-[calc(100%-64px)] overflow-y-auto">
+            <form onSubmit={onSubmit} className="p-4 sm:p-6">
+              {/* top error */}
+              {errors._top && (
+                <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-200">
+                  {errors._top}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                {/* left form */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelBase}>Name *</label>
+                      <input
+                        className={`${inputBase} ${validated && errors.name ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.name}
+                        onChange={(e) => setField("name", e.target.value)}
+                        placeholder="Product name"
+                      />
+                      {validated && errors.name && (
+                        <p className="mt-1 text-xs text-red-600">{errors.name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className={labelBase}>Brand *</label>
+                      <input
+                        className={`${inputBase} ${validated && errors.brand ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.brand}
+                        onChange={(e) => setField("brand", e.target.value)}
+                        placeholder="Brand"
+                      />
+                      {validated && errors.brand && (
+                        <p className="mt-1 text-xs text-red-600">{errors.brand}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelBase}>Category *</label>
+                      <select
+                        className={`${inputBase} ${validated && errors.category ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.category}
+                        onChange={(e) => setField("category", e.target.value)}
+                      >
+                        <option value="">Select category</option>
+                        {CATEGORIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                      {validated && errors.category && (
+                        <p className="mt-1 text-xs text-red-600">{errors.category}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className={labelBase}>Price (₹) *</label>
+                      <input
+                        type="number"
+                        className={`${inputBase} ${validated && errors.price ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.price}
+                        onChange={(e) => setField("price", e.target.value)}
+                        placeholder="0.00"
+                        min="0.01"
+                        step="0.01"
+                      />
+                      {validated && errors.price && (
+                        <p className="mt-1 text-xs text-red-600">{errors.price}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className={labelBase}>Stock Qty *</label>
+                      <input
+                        type="number"
+                        className={`${inputBase} ${validated && errors.stockQuantity ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.stockQuantity}
+                        onChange={(e) => setField("stockQuantity", e.target.value)}
+                        placeholder="0"
+                        min="0"
+                      />
+                      {validated && errors.stockQuantity && (
+                        <p className="mt-1 text-xs text-red-600">{errors.stockQuantity}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelBase}>Release Date *</label>
+                      <input
+                        type="date"
+                        className={`${inputBase} ${validated && errors.releaseDate ? "border-red-300 dark:border-red-800" : ""}`}
+                        value={product.releaseDate}
+                        onChange={(e) => setField("releaseDate", e.target.value)}
+                      />
+                      {validated && errors.releaseDate && (
+                        <p className="mt-1 text-xs text-red-600">{errors.releaseDate}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-end gap-3">
+                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={product.productAvailable}
+                          onChange={(e) => setField("productAvailable", e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+                        />
+                        Product Available
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Description + AI button */}
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className={labelBase}>
+                        Description <span className="text-gray-400">(optional)</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={generateDescription}
+                        disabled={!canGenerateDescription || generatingDescription}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition
+                          ${
+                            !canGenerateDescription || generatingDescription
+                              ? "opacity-60 cursor-not-allowed border border-gray-200 dark:border-gray-800"
+                              : "border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-950/60"
+                          }`}
+                        title={
+                          !canGenerateDescription
+                            ? "Enter name + select category first"
+                            : "Generate description with AI"
+                        }
+                      >
+                        {generatingDescription ? "Generating..." : "🤖 Generate Description"}
+                      </button>
+                    </div>
+
+                    <textarea
+                      rows={4}
+                      className={inputBase}
+                      value={product.description}
+                      onChange={(e) => setField("description", e.target.value)}
+                      placeholder="Write description or generate using AI..."
+                    />
+                  </div>
+                </div>
+
+                {/* right panel: image + preview */}
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold">Product Image</div>
+
+                      <button
+                        type="button"
+                        onClick={generateImage}
+                        disabled={!canGenerateImage || generatingImage}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition
+                          ${
+                            !canGenerateImage || generatingImage
+                              ? "opacity-60 cursor-not-allowed border border-gray-200 dark:border-gray-800"
+                              : "border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-950/60"
+                          }`}
+                        title={
+                          !canGenerateImage
+                            ? "Enter name + category + description first"
+                            : "Generate image with AI"
+                        }
+                      >
+                        {generatingImage ? "Generating..." : "🖼️ Generate Image"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg"
+                        className={`${inputBase} ${validated && errors.image ? "border-red-300 dark:border-red-800" : ""}`}
+                        onChange={(e) => onImagePick(e.target.files?.[0])}
+                      />
+                      {validated && errors.image && (
+                        <p className="mt-1 text-xs text-red-600">{errors.image}</p>
+                      )}
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Upload (JPG/PNG) or generate with AI. Image is optional.
+                      </p>
+                    </div>
+
+                    {/* Preview */}
+                    {previewUrl ? (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {aiImage ? "AI image preview" : "Selected image preview"}
+                          </p>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
+                              if (previewUrl && imageFile) URL.revokeObjectURL(previewUrl);
+                              setAiImage(null);
+                              setImageFile(null);
+                              setPreviewUrl("");
+                            }}
+                            className="text-xs font-semibold text-red-600 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
+                          <img
+                            src={previewUrl}
+                            alt="preview"
+                            className="w-full h-48 object-contain rounded-lg"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No image selected
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit area */}
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="rounded-xl px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="rounded-xl px-4 py-2 text-sm font-semibold bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition disabled:opacity-60"
+                    >
+                      {submitting ? "Saving..." : "Submit"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
           </div>
 
-          {/* ✅ Sticky footer buttons */}
-          <div className="sticky bottom-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 py-3 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition"
-            >
-              Cancel
-            </button>
+          {/* AI prompt sheet */}
+          <AnimatePresence>
+            {aiPromptOpen && (
+              <motion.div
+                className="absolute inset-0 z-[110] flex items-center justify-center p-3 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <div
+                  className="absolute inset-0 bg-black/60"
+                  onClick={() => setAiPromptOpen(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 14, scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  className="relative w-full max-w-xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <div className="font-semibold">Generate Product with AI</div>
+                    <button
+                      onClick={() => setAiPromptOpen(false)}
+                      className="rounded-xl px-3 py-2 text-xs font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      disabled={generatingProduct}
+                    >
+                      Close
+                    </button>
+                  </div>
 
-            <button
-              type="submit"
-              className="rounded-md px-5 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition"
-            >
-              Submit
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+                  <div className="p-4 sm:p-6">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Describe the product, AI will generate fields (name, brand, description, etc.).
+                    </p>
+
+                    <textarea
+                      className={`${inputBase} mt-3`}
+                      rows={5}
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="E.g., premium gaming laptop, RTX graphics, 32GB RAM, 1TB SSD..."
+                      disabled={generatingProduct}
+                    />
+
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setAiPromptOpen(false)}
+                        className="rounded-xl px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                        disabled={generatingProduct}
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={generateProductFromPrompt}
+                        disabled={generatingProduct || !aiPrompt.trim()}
+                        className="rounded-xl px-4 py-2 text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-60"
+                      >
+                        {generatingProduct ? "Generating..." : "Generate"}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
