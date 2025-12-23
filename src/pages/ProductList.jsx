@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+// src/pages/ProductList.jsx
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/axios";
 import { motion } from "framer-motion";
@@ -11,10 +12,11 @@ export default function ProductList() {
   const { addToCart } = useCart();
 
   const [products, setProducts] = useState([]);
-  const [imgMap, setImgMap] = useState({});
+  const [imgMap, setImgMap] = useState({}); // { [id]: objectUrl }
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // -------- Normal Filters ----------
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [minPrice, setMinPrice] = useState("");
@@ -22,52 +24,105 @@ export default function ProductList() {
   const [sortBy, setSortBy] = useState("default");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  // -------- Smart Search ----------
+  const [smartQuery, setSmartQuery] = useState("");
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [smartError, setSmartError] = useState("");
+  const [smartResults, setSmartResults] = useState(null); // null => inactive, [] => active empty
+
+  const categories = useMemo(() => ["all", ...CATEGORIES], []);
+
+  // ------------------ helpers ------------------
+  const revokeAllObjectUrls = useCallback(() => {
+    setImgMap((prev) => {
+      Object.values(prev).forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {
+          // ignore
+        }
+      });
+      return {};
+    });
+  }, []);
+
+  const fetchImageById = useCallback(
+    async (id, mountedRef) => {
+      try {
+        const res = await api.get(`/product/${id}/image`, { responseType: "blob" });
+        const url = URL.createObjectURL(res.data);
+        if (mountedRef.current) {
+          setImgMap((prev) => ({ ...prev, [id]: url }));
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      } catch {
+        // 404 image -> ignore
+      }
+    },
+    []
+  );
+
+  // ✅ Fetch all products (used on mount + on smart clear)
+  const fetchAllProducts = useCallback(async () => {
+    setErr("");
+    setLoading(true);
+
+    // if you want freshest images, revoke old ones before refetch
+    revokeAllObjectUrls();
+
+    try {
+      const res = await api.get("/products");
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list);
+
+      const mountedRef = { current: true };
+      await Promise.allSettled(list.map((p) => fetchImageById(p.id, mountedRef)));
+    } catch {
+      setErr("Failed to load products.");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchImageById, revokeAllObjectUrls]);
+
+  // Initial load
   useEffect(() => {
     let mounted = true;
-    const createdUrls = []; 
+    const mountedRef = { current: true };
 
-    const fetchImageById = async (id) => {
-      try {
-        const res = await api.get(`/product/${id}/image`, {
-          responseType: "blob",
-        });
-
-        const url = URL.createObjectURL(res.data);
-        createdUrls.push(url);
-
-        if (mounted) {
-          setImgMap((prev) => ({ ...prev, [id]: url }));
-        }
-      } catch (error) {
-        // 404 image -> ignore
-        console.warn("No image for this product:", id, error);
-      }
-    };
-    const load = async () => {
+    (async () => {
       try {
         setErr("");
         setLoading(true);
-        const res = await api.get("/products"); 
+
+        // clear old urls on first mount load
+        revokeAllObjectUrls();
+
+        const res = await api.get("/products");
         if (!mounted) return;
+
         const list = Array.isArray(res.data) ? res.data : [];
         setProducts(list);
-        await Promise.allSettled(list.map((p) => fetchImageById(p.id)));
-      } catch (e) {
+
+        await Promise.allSettled(
+          list.map((p) => fetchImageById(p.id, mountedRef))
+        );
+      } catch {
         if (mounted) setErr("Failed to load products.");
       } finally {
         if (mounted) setLoading(false);
       }
-    };
+    })();
 
-    load();
     return () => {
       mounted = false;
-      createdUrls.forEach((u) => URL.revokeObjectURL(u));
+      mountedRef.current = false;
+      // cleanup all object URLs on unmount
+      revokeAllObjectUrls();
     };
-  }, []);
+  }, [fetchImageById, revokeAllObjectUrls]);
 
-  const categories = useMemo(() => ["all", ...CATEGORIES], []);
-
+  // -------- Normal filtered list ----------
   const filteredProducts = useMemo(() => {
     let list = [...products];
 
@@ -85,11 +140,8 @@ export default function ProductList() {
     const min = minPrice === "" ? null : Number(minPrice);
     const max = maxPrice === "" ? null : Number(maxPrice);
 
-    if (min !== null && !Number.isNaN(min))
-      list = list.filter((p) => Number(p.price) >= min);
-
-    if (max !== null && !Number.isNaN(max))
-      list = list.filter((p) => Number(p.price) <= max);
+    if (min !== null && !Number.isNaN(min)) list = list.filter((p) => Number(p.price) >= min);
+    if (max !== null && !Number.isNaN(max)) list = list.filter((p) => Number(p.price) <= max);
 
     switch (sortBy) {
       case "priceLow":
@@ -119,6 +171,53 @@ export default function ProductList() {
     setSortBy("default");
   };
 
+  // ✅ Smart Search API call
+  const runSmartSearch = async () => {
+    const q = smartQuery.trim();
+    if (!q) return;
+
+    setSmartError("");
+    setSmartLoading(true);
+
+    try {
+      /**
+       * ✅ CHANGE this endpoint if needed.
+       * Current: GET /api/products/smart-search?query=...
+       */
+      const res = await api.get(`/api/products/smart-search`, {
+        params: { query: q },
+      });
+
+      const list = Array.isArray(res.data) ? res.data : [];
+      setSmartResults(list);
+
+      // Fetch images for smart results if missing
+      const mountedRef = { current: true };
+      await Promise.allSettled(
+        list.map(async (p) => {
+          if (imgMap[p.id]) return;
+          await fetchImageById(p.id, mountedRef);
+        })
+      );
+    } catch (e) {
+      console.error(e);
+      setSmartError("Smart search failed. Please try again.");
+      setSmartResults([]);
+    } finally {
+      setSmartLoading(false);
+    }
+  };
+
+  // ✅ Clear smart search AND refetch full products again
+  const clearSmartSearch = async () => {
+    setSmartQuery("");
+    setSmartResults(null);
+    setSmartError("");
+    await fetchAllProducts();
+  };
+
+  const listToRender = smartResults !== null ? smartResults : filteredProducts;
+
   const FiltersPanel = ({ isMobile = false }) => (
     <div
       className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 ${
@@ -136,7 +235,7 @@ export default function ProductList() {
       </div>
 
       <div className="mt-4">
-        <label className="text-xs text-gray-600 dark:text-gray-300">Search</label>
+        <label className="text-xs text-gray-600 dark:text-gray-300">Search (title)</label>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -208,37 +307,78 @@ export default function ProductList() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Products</h2>
+          {smartResults !== null ? (
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              Showing <span className="font-semibold">{listToRender.length}</span> smart results for{" "}
+              <span className="font-semibold">"{smartQuery}"</span>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              Showing <span className="font-semibold">{listToRender.length}</span> items
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            Showing <span className="font-semibold">{filteredProducts.length}</span> items
-          </span>
+        {/* Smart Search */}
+        <div className="w-full sm:w-[460px]">
+          <label className="text-xs text-gray-600 dark:text-gray-300">Smart Search (AI)</label>
+          <div className="mt-1 flex gap-2">
+            <input
+              value={smartQuery}
+              onChange={(e) => setSmartQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runSmartSearch();
+              }}
+              placeholder='Try: "gaming laptop under 80k", "wireless headphones"'
+              className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
+            />
 
-          <button
-            onClick={() => setMobileFiltersOpen(true)}
-            className="sm:hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-          >
-            Filters
-          </button>
+            <button
+              onClick={runSmartSearch}
+              disabled={smartLoading || !smartQuery.trim()}
+              className="rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
+            >
+              {smartLoading ? "Searching..." : "Search"}
+            </button>
+
+            {smartResults !== null && (
+              <button
+                onClick={clearSmartSearch}
+                className="rounded-md border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {smartError && (
+            <div className="mt-2 text-xs text-red-600 dark:text-red-300">{smartError}</div>
+          )}
         </div>
+
+        <button
+          onClick={() => setMobileFiltersOpen(true)}
+          className="sm:hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+        >
+          Filters
+        </button>
       </div>
 
+      {/* Mobile filters */}
       {mobileFiltersOpen && (
         <div className="sm:hidden fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setMobileFiltersOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileFiltersOpen(false)} />
           <div className="absolute left-3 right-3 top-20">
             <FiltersPanel isMobile />
           </div>
         </div>
       )}
 
+      {/* States */}
       {loading && (
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -268,11 +408,11 @@ export default function ProductList() {
           </aside>
 
           <section className="lg:col-span-9">
-            {filteredProducts.length === 0 ? (
+            {listToRender.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                 <h3 className="font-semibold">No products found</h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  Try changing filters or clearing them.
+                  Try changing filters OR smart search query.
                 </p>
               </div>
             ) : (
@@ -285,16 +425,13 @@ export default function ProductList() {
                   show: { opacity: 1, transition: { staggerChildren: 0.06 } },
                 }}
               >
-                {filteredProducts.map((p) => {
+                {listToRender.map((p) => {
                   const imgSrc = imgMap[p.id] || p.image || PLACEHOLDER;
 
                   return (
                     <motion.div
                       key={p.id}
-                      variants={{
-                        hidden: { opacity: 0, y: 14 },
-                        show: { opacity: 1, y: 0 },
-                      }}
+                      variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0 } }}
                       className="relative"
                     >
                       <Link
@@ -313,9 +450,7 @@ export default function ProductList() {
                           </div>
                         </div>
 
-                        <h3 className="mt-4 font-semibold leading-snug line-clamp-2">
-                          {p.title}
-                        </h3>
+                        <h3 className="mt-4 font-semibold leading-snug line-clamp-2">{p.title}</h3>
 
                         <div className="mt-3 flex items-center justify-between">
                           <p className="text-lg font-bold">₹{p.price}</p>
