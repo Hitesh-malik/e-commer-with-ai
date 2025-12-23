@@ -4,49 +4,85 @@ import { api } from "../api/axios";
 import { motion } from "framer-motion";
 import { useCart } from "../context/CartContext";
 
+const PLACEHOLDER =
+  "https://via.placeholder.com/700x700.png?text=No+Image";
+
 export default function ProductView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
+  const [imageUrl, setImageUrl] = useState(""); 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    let objectUrl = null;
 
-    async function load() {
+    const fetchImage = async () => {
+      try {
+        const res = await api.get(`/product/${id}/image`, {
+          responseType: "blob",
+        });
+
+        objectUrl = URL.createObjectURL(res.data);
+        if (mounted) setImageUrl(objectUrl);
+      } catch (error) {
+        // image might not exist -> keep placeholder
+        console.warn("No image for this product or error loading image", error);
+        if (mounted) setImageUrl("");
+      }
+    };
+
+    const fetchProduct = async () => {
       try {
         setErr("");
         setLoading(true);
-        const res = await api.get(`/products/${id}`);
-        if (mounted) setProduct(res.data);
-      } catch {
+
+        // ✅ product API (your shared style)
+        const res = await api.get(`/product/${id}`);
+        if (!mounted) return;
+
+        setProduct(res.data);
+
+        // ✅ after product load fetch image
+        fetchImage();
+      } catch (error) {
+        console.error("Error fetching product:", error);
         if (mounted) setErr("Failed to load product.");
       } finally {
         if (mounted) setLoading(false);
       }
-    }
+    };
 
-    load();
-    return () => (mounted = false);
+    fetchProduct();
+
+    return () => {
+      mounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [id]);
 
   const onDelete = async () => {
     if (!product) return;
 
     const ok = window.confirm(
-      `Are you sure you want to delete "${product.title}"?`
+      `Are you sure you want to delete "${product.title || product.name}"?`
     );
     if (!ok) return;
 
     try {
       setDeleting(true);
-      await api.delete(`/products/${id}`);
+
+      // ✅ delete API (your shared style)
+      await api.delete(`/product/${id}`);
+
       navigate("/products");
-    } catch {
+    } catch (error) {
+      console.error("Error deleting product:", error);
       setErr("Failed to delete product.");
     } finally {
       setDeleting(false);
@@ -93,6 +129,7 @@ export default function ProductView() {
           transition={{ duration: 0.35 }}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* ✅ IMAGE from fetchImage(blob) */}
             <motion.div
               className="aspect-square rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden"
               initial={{ opacity: 0, scale: 0.97 }}
@@ -100,12 +137,13 @@ export default function ProductView() {
               transition={{ duration: 0.35 }}
             >
               <img
-                src={product.image}
-                alt={product.title}
+                src={imageUrl || product.image || PLACEHOLDER}
+                alt={product.title || product.name}
                 className="h-full w-full object-contain p-6"
               />
             </motion.div>
 
+            {/* DETAILS */}
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-3 py-1 text-xs text-gray-700 dark:text-gray-200">
                 <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -113,7 +151,7 @@ export default function ProductView() {
               </div>
 
               <h3 className="mt-4 text-xl font-semibold leading-snug">
-                {product.title}
+                {product.title || product.name}
               </h3>
 
               <div className="mt-4 flex items-end justify-between gap-3">

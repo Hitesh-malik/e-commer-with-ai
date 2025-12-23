@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 
 export default function AskAI() {
@@ -12,18 +12,70 @@ export default function AskAI() {
     },
   ]);
 
+  const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState("");
+
   const listRef = useRef(null);
+
+  // ✅ Prefer env var; fallback for local
+  const baseUrl = import.meta.env.VITE_BASE_URL ?? "http://localhost:8080";
 
   // Auto scroll to bottom when new message arrives
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  const send = async () => {
+  // ✅ Extracted API method (from your chatscope code)
+  const processMessageToAI = useCallback(async (chatMessage) => {
+    const url = `${baseUrl}/api/chat/ask?message=${encodeURIComponent(
+      chatMessage
+    )}`;
+
+    const response = await fetch(url, { method: "GET" });
+
+    if (!response.ok) {
+      let errMsg = "Failed to get response from TeluskoBot";
+
+      // Try JSON error, else plain text
+      try {
+        const errorData = await response.json();
+        errMsg =
+          errorData.error?.message || errorData.message || errMsg;
+      } catch {
+        try {
+          errMsg = await response.text();
+        } catch {
+          // ignore
+        }
+      }
+
+      throw new Error(errMsg);
+    }
+
+    // Try JSON first; fallback to text
+    const contentType = response.headers.get("content-type") || "";
+    let botMessageText = "";
+
+    if (contentType.includes("application/json")) {
+      const data = await response.json();
+      botMessageText =
+        typeof data === "string"
+          ? data
+          : data.response ?? data.message ?? JSON.stringify(data);
+    } else {
+      botMessageText = await response.text();
+    }
+
+    return botMessageText;
+  }, [baseUrl]);
+
+  const send = useCallback(async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || isTyping) return;
+
+    setError("");
 
     const userMsg = {
       id: crypto?.randomUUID?.() ?? String(Date.now()),
@@ -34,19 +86,25 @@ export default function AskAI() {
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setIsTyping(true);
 
-    // ✅ Dummy AI reply (you can connect backend API later)
-    setTimeout(() => {
+    try {
+      const botText = await processMessageToAI(text);
+
       const aiReply = {
         id: crypto?.randomUUID?.() ?? String(Date.now() + 1),
         role: "assistant",
-        text:
-          "Sure! I can help with that. If you want, I can generate a clean product description and image prompt for your item.",
+        text: botText,
         time: Date.now(),
       };
+
       setMessages((prev) => [...prev, aiReply]);
-    }, 650);
-  };
+    } catch (e) {
+      setError(e?.message || "Something went wrong.");
+    } finally {
+      setIsTyping(false);
+    }
+  }, [input, isTyping, processMessageToAI]);
 
   const onKeyDown = (e) => {
     // Enter sends, Shift+Enter makes newline
@@ -68,19 +126,18 @@ export default function AskAI() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      {/* Chat shell */}
       <motion.section
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         className="
-        mt-8
+          mt-8
           rounded-2xl border border-gray-200 dark:border-gray-800
           bg-white dark:bg-gray-900
           shadow-lg shadow-black/5 dark:shadow-black/30
           overflow-hidden
         "
-        style={{ height: "calc(100dvh - 210px)" }} // ✅ responsive screen height like screenshot
+        style={{ height: "calc(100dvh - 210px)" }}
       >
         <div className="h-full flex flex-col">
           {/* Header bar */}
@@ -92,7 +149,7 @@ export default function AskAI() {
               <div>
                 <div className="font-semibold leading-tight">AI Assistant</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Online • Replies instantly
+                  {isTyping ? "Typing…" : "Online • Replies instantly"}
                 </div>
               </div>
             </div>
@@ -100,7 +157,14 @@ export default function AskAI() {
             {headerBadge}
           </div>
 
-          {/* Messages area (scroll inside only) */}
+          {/* Error (if any) */}
+          {error && (
+            <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          {/* Messages area */}
           <div
             ref={listRef}
             className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 bg-gray-50 dark:bg-gray-950"
@@ -109,6 +173,15 @@ export default function AskAI() {
               {messages.map((m) => (
                 <MessageBubble key={m.id} role={m.role} text={m.text} />
               ))}
+
+              {/* Typing indicator bubble */}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl px-4 py-3 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200">
+                    AI is typing…
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -121,27 +194,33 @@ export default function AskAI() {
                 onKeyDown={onKeyDown}
                 rows={1}
                 placeholder="Type your message here..."
+                disabled={isTyping}
                 className="
                   flex-1 resize-none rounded-2xl
                   border border-gray-200 dark:border-gray-800
                   bg-gray-50 dark:bg-gray-950
                   px-4 py-3 text-sm outline-none
                   focus:border-gray-400 dark:focus:border-gray-600
+                  disabled:opacity-70
                 "
               />
 
               <button
                 onClick={send}
+                disabled={isTyping || !input.trim()}
                 className="
                   rounded-2xl px-4 py-3 text-sm font-medium
                   bg-blue-600 text-white hover:bg-blue-700
-                  transition
+                  transition disabled:opacity-60 disabled:hover:bg-blue-600
                 "
               >
                 Send
               </button>
             </div>
 
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Enter = send • Shift+Enter = new line
+            </p>
           </div>
         </div>
       </motion.section>
@@ -163,7 +242,7 @@ function MessageBubble({ role, text }) {
       <div
         className={`
           max-w-[85%] sm:max-w-[70%]
-          rounded-2xl px-4 py-3 text-sm leading-relaxed
+          rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap
           ${
             isUser
               ? "bg-blue-600 text-white"
