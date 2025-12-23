@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/axios";
 import { motion } from "framer-motion";
 import { useCart } from "../context/CartContext";
 
 export default function ProductView() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -32,11 +34,33 @@ export default function ProductView() {
     return () => (mounted = false);
   }, [id]);
 
+  const onDelete = async () => {
+    if (!product) return;
+
+    const ok = window.confirm(
+      `Are you sure you want to delete "${product.title}"?`
+    );
+    if (!ok) return;
+
+    try {
+      setDeleting(true);
+      await api.delete(`/products/${id}`);
+      navigate("/products");
+    } catch {
+      setErr("Failed to delete product.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-2xl font-bold tracking-tight">Product Details</h2>
-        <Link to="/products" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+        <Link
+          to="/products"
+          className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+        >
           ← Back to Products
         </Link>
       </div>
@@ -75,7 +99,11 @@ export default function ProductView() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.35 }}
             >
-              <img src={product.image} alt={product.title} className="h-full w-full object-contain p-6" />
+              <img
+                src={product.image}
+                alt={product.title}
+                className="h-full w-full object-contain p-6"
+              />
             </motion.div>
 
             <div>
@@ -84,7 +112,9 @@ export default function ProductView() {
                 {product.category}
               </div>
 
-              <h3 className="mt-4 text-xl font-semibold leading-snug">{product.title}</h3>
+              <h3 className="mt-4 text-xl font-semibold leading-snug">
+                {product.title}
+              </h3>
 
               <div className="mt-4 flex items-end justify-between gap-3">
                 <p className="text-3xl font-bold">₹{product.price}</p>
@@ -97,6 +127,7 @@ export default function ProductView() {
                 {product.description}
               </p>
 
+              {/* Buttons */}
               <div className="mt-7 flex flex-wrap gap-3">
                 <button
                   onClick={() => addToCart(product)}
@@ -106,10 +137,18 @@ export default function ProductView() {
                 </button>
 
                 <button
-                  onClick={() => addToCart(product)}
-                  className="rounded-md border border-gray-300 dark:border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                  onClick={() => navigate(`/products/${product.id}/edit`)}
+                  className="rounded-md border border-blue-300 dark:border-blue-700 px-5 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
                 >
-                  Buy Now
+                  Update
+                </button>
+
+                <button
+                  onClick={onDelete}
+                  disabled={deleting}
+                  className="rounded-md border border-red-300 dark:border-red-700 px-5 py-2.5 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 transition disabled:opacity-60"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
                 </button>
               </div>
             </div>
