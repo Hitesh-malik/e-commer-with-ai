@@ -17,6 +17,14 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
   const [aiDescLoading, setAiDescLoading] = useState(false);
   const [aiImgLoading, setAiImgLoading] = useState(false);
 
+  // ✅ prevent background scroll
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => (document.body.style.overflow = "");
+  }, [open]);
+
+  // ✅ ESC close
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === "Escape") onClose();
@@ -25,6 +33,7 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
+  // reset on open
   useEffect(() => {
     if (open) {
       setForm({
@@ -56,7 +65,8 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
   };
 
   const canGenerateDesc = form.name.trim() && form.category.trim();
-  const canGenerateImage = form.name.trim() && form.category.trim() && form.description.trim();
+  const canGenerateImage =
+    form.name.trim() && form.category.trim() && form.description.trim();
 
   const handleGenerateDescription = () => {
     if (!canGenerateDesc) return;
@@ -64,10 +74,10 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
     setTimeout(() => {
       setForm((p) => ({
         ...p,
-        description: `AI-generated description: ${p.name} (${p.category}). Modern design, premium build, and great value for everyday use.`,
+        description: `AI-generated description: ${p.name} (${p.category}). Premium design, modern build, and great value for daily use.`,
       }));
       setAiDescLoading(false);
-    }, 900);
+    }, 800);
   };
 
   const handleGenerateImage = () => {
@@ -85,13 +95,15 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
     if (!form.name.trim()) return alert("Product name is required");
     if (!form.brand.trim()) return alert("Brand is required");
     if (!form.category.trim()) return alert("Category is required");
-    if (form.price === "" || Number.isNaN(Number(form.price))) return alert("Valid price is required");
-    if (form.stockQty === "" || Number.isNaN(Number(form.stockQty))) return alert("Valid stock quantity is required");
+    if (form.price === "" || Number.isNaN(Number(form.price)))
+      return alert("Valid price is required");
+    if (form.stockQty === "" || Number.isNaN(Number(form.stockQty)))
+      return alert("Valid stock quantity is required");
     if (!form.releaseDate) return alert("Release date is required");
 
     const payload = {
       id: crypto?.randomUUID?.() ?? Date.now(),
-      title: form.name.trim(),     // match listing cards
+      title: form.name.trim(),
       name: form.name.trim(),
       brand: form.brand.trim(),
       category: form.category,
@@ -100,7 +112,7 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
       stockQty: Number(form.stockQty),
       releaseDate: form.releaseDate,
       available: form.available,
-      image: "", // later set after upload/AI
+      image: "",
       imageFile: form.imageFile,
     };
 
@@ -109,11 +121,27 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-3 sm:px-6">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+      />
 
-      <div className="relative w-[94%] max-w-4xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+      {/* ✅ Modal: full height on mobile with internal scroll */}
+      <div
+        className="
+          relative w-full max-w-4xl
+          max-h-[92dvh] sm:max-h-[88dvh]
+          rounded-2xl border border-gray-200 dark:border-gray-800
+          bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100
+          shadow-2xl
+          flex flex-col
+          overflow-hidden
+        "
+      >
+        {/* ✅ Sticky header */}
+        <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between">
           <h3 className="text-lg sm:text-xl font-semibold">Add New Product</h3>
           <button
             onClick={onClose}
@@ -123,7 +151,11 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+        {/* ✅ Scroll content area */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-5"
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Name</label>
@@ -158,13 +190,15 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
             >
               <option value="">Select category</option>
               {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <label className="text-sm font-medium">
                 Description <span className="text-xs text-gray-500">(Optional)</span>
               </label>
@@ -190,8 +224,9 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
               onChange={update}
               rows={4}
               placeholder="Add product description (optional) or use AI to generate one"
-              className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
+              className="mt-2 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
             />
+
             <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               Fill in product name and category to enable AI description generation.
             </p>
@@ -241,7 +276,7 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <label className="text-sm font-medium">
                 Image <span className="text-xs text-gray-500">(Optional)</span>
               </label>
@@ -289,10 +324,13 @@ export default function AddItemModal({ open, onClose, onSubmit }) {
               type="checkbox"
               className="h-4 w-4 rounded border-gray-300 dark:border-gray-700"
             />
-            <label htmlFor="available" className="text-sm">Product Available</label>
+            <label htmlFor="available" className="text-sm">
+              Product Available
+            </label>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+          {/* ✅ Sticky footer buttons */}
+          <div className="sticky bottom-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 py-3 flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
