@@ -10,7 +10,7 @@ export default function Navbar() {
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const { totalItems } = useCart();
-  
+
   useEffect(() => {
     function onResize() {
       if (window.innerWidth >= 768) setMobileMenu(false);
@@ -20,10 +20,9 @@ export default function Navbar() {
   }, []);
 
   const linkCls = ({ isActive }) =>
-    `px-3 py-2 rounded-md text-sm font-medium transition ${
-      isActive
-        ? "bg-white text-black dark:bg-gray-200 dark:text-black"
-        : "text-gray-200 hover:bg-gray-800 hover:text-white"
+    `px-3 py-2 rounded-md text-sm font-medium transition ${isActive
+      ? "bg-white text-black dark:bg-gray-200 dark:text-black"
+      : "text-gray-200 hover:bg-gray-800 hover:text-white"
     }`;
 
   const handleSubmit = (data) => {
@@ -36,16 +35,9 @@ export default function Navbar() {
       <header className="sticky top-0 z-40 bg-gray-950 text-white border-b border-gray-800">
         <nav className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <NavLink to="/" className="md:hidden text-lg font-bold tracking-wide">
+            <NavLink to="/" className="text-lg font-bold tracking-wide">
               E-Commer
             </NavLink>
-
-            <button
-              onClick={() => setOpenAdd(true)}
-              className="hidden md:inline-flex px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-sm font-medium transition"
-            >
-              Add Item
-            </button>
           </div>
 
           <div className="hidden md:flex items-center gap-2">
@@ -55,6 +47,13 @@ export default function Navbar() {
             <NavLink to="/products" className={linkCls}>
               Products
             </NavLink>
+            <NavLink to="/ask-ai" className={linkCls}>
+              Ask AI
+            </NavLink>
+            <NavLink to="/orders" className={linkCls}>
+              Orders
+            </NavLink>
+
           </div>
 
           <div className="flex items-center gap-2">
@@ -71,9 +70,12 @@ export default function Navbar() {
               )}
             </button>
 
-            <NavLink to="/" className="hidden md:block text-lg font-bold tracking-wide">
-              E-Commer
-            </NavLink>
+            <button
+              onClick={() => setOpenAdd(true)}
+              className="hidden md:inline-flex px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-sm font-medium transition"
+            >
+              Add Item
+            </button>
 
             <button
               onClick={() => setMobileMenu((v) => !v)}
@@ -95,6 +97,9 @@ export default function Navbar() {
               >
                 Home
               </NavLink>
+              <NavLink to="/orders" className={linkCls} onClick={() => setMobileMenu(false)}>
+                Orders
+              </NavLink>
 
               <NavLink
                 to="/products"
@@ -102,6 +107,13 @@ export default function Navbar() {
                 onClick={() => setMobileMenu(false)}
               >
                 Products
+              </NavLink>
+              <NavLink
+                to="/ask-ai"
+                className={linkCls}
+                onClick={() => setMobileMenu(false)}
+              >
+                Ask AI
               </NavLink>
 
               <button
