@@ -3,16 +3,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const getInitial = () => {
+  const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("theme");
     if (saved === "light" || saved === "dark") return saved;
-
-    // fallback to system preference
-    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-    return prefersDark ? "dark" : "light";
-  };
-
-  const [theme, setTheme] = useState(getInitial);
+    return "dark";
+  });
 
   useEffect(() => {
     const root = document.documentElement;
@@ -25,7 +20,6 @@ export function ThemeProvider({ children }) {
     () => ({
       theme,
       toggle: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-      setTheme,
     }),
     [theme]
   );
