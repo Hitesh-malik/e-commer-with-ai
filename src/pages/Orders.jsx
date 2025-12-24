@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
 export default function Orders() {
-  const baseUrl = import.meta.env.VITE_BASE_URL ?? "http://localhost:8080";
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
