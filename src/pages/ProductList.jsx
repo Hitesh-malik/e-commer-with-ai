@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/axios";
 import { motion } from "framer-motion";
-import { CATEGORIES } from "../constants/categories";
 import { useCart } from "../context/CartContext";
 
 const PLACEHOLDER = "https://via.placeholder.com/600x600.png?text=No+Image";
@@ -12,11 +11,10 @@ export default function ProductList() {
   const { addToCart } = useCart();
 
   const [products, setProducts] = useState([]);
-  const [imgMap, setImgMap] = useState({}); // { [id]: objectUrl }
+  const [imgMap, setImgMap] = useState({}); 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // -------- Normal Filters ----------
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [minPrice, setMinPrice] = useState("");
@@ -24,22 +22,18 @@ export default function ProductList() {
   const [sortBy, setSortBy] = useState("default");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
-  // -------- Smart Search ----------
   const [smartQuery, setSmartQuery] = useState("");
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartError, setSmartError] = useState("");
-  const [smartResults, setSmartResults] = useState(null); // null => inactive, [] => active empty
+  const [smartResults, setSmartResults] = useState(null);  
 
-  const categories = useMemo(() => ["all", ...CATEGORIES], []);
 
-  // ------------------ helpers ------------------
   const revokeAllObjectUrls = useCallback(() => {
     setImgMap((prev) => {
       Object.values(prev).forEach((u) => {
         try {
           URL.revokeObjectURL(u);
         } catch {
-          // ignore
         }
       });
       return {};
@@ -57,18 +51,15 @@ export default function ProductList() {
           URL.revokeObjectURL(url);
         }
       } catch {
-        // 404 image -> ignore
       }
     },
     []
   );
 
-  // ✅ Fetch all products (used on mount + on smart clear)
   const fetchAllProducts = useCallback(async () => {
     setErr("");
     setLoading(true);
 
-    // if you want freshest images, revoke old ones before refetch
     revokeAllObjectUrls();
 
     try {
@@ -85,7 +76,6 @@ export default function ProductList() {
     }
   }, [fetchImageById, revokeAllObjectUrls]);
 
-  // Initial load
   useEffect(() => {
     let mounted = true;
     const mountedRef = { current: true };
@@ -95,7 +85,6 @@ export default function ProductList() {
         setErr("");
         setLoading(true);
 
-        // clear old urls on first mount load
         revokeAllObjectUrls();
 
         const res = await api.get("/products");
@@ -117,12 +106,10 @@ export default function ProductList() {
     return () => {
       mounted = false;
       mountedRef.current = false;
-      // cleanup all object URLs on unmount
       revokeAllObjectUrls();
     };
   }, [fetchImageById, revokeAllObjectUrls]);
 
-  // -------- Normal filtered list ----------
   const filteredProducts = useMemo(() => {
     let list = [...products];
 
@@ -163,14 +150,7 @@ export default function ProductList() {
     return list;
   }, [products, search, category, minPrice, maxPrice, sortBy]);
 
-  const clearFilters = () => {
-    setSearch("");
-    setCategory("all");
-    setMinPrice("");
-    setMaxPrice("");
-    setSortBy("default");
-  };
-
+ 
   const runSmartSearch = async () => {
     const q = smartQuery.trim();
     if (!q) return;
@@ -180,7 +160,7 @@ export default function ProductList() {
 
     try {
  
-      const res = await api.get(`/api/products/smart-search`, {
+      const res = await api.get(`/products/smart-search`, {
         params: { query: q },
       });
 
@@ -214,7 +194,6 @@ export default function ProductList() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Products</h2>
@@ -230,7 +209,6 @@ export default function ProductList() {
           )}
         </div>
 
-        {/* Smart Search */}
         <div className="w-full sm:w-[460px]">
           <label className="text-xs text-gray-600 dark:text-gray-300">Smart Search (AI)</label>
           <div className="mt-1 flex gap-2">
@@ -266,16 +244,8 @@ export default function ProductList() {
             <div className="mt-2 text-xs text-red-600 dark:text-red-300">{smartError}</div>
           )}
         </div>
-
-        <button
-          onClick={() => setMobileFiltersOpen(true)}
-          className="sm:hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-        >
-          Filters
-        </button>
       </div>
 
-      {/* States */}
       {loading && (
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (

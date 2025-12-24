@@ -20,20 +20,17 @@ export default function AddItemModal({ open, onClose, onCreated }) {
   const [errors, setErrors] = useState({});
   const [validated, setValidated] = useState(false);
 
-  const [imageFile, setImageFile] = useState(null); // user uploaded
-  const [aiImage, setAiImage] = useState(null); // { blob, url }
+  const [imageFile, setImageFile] = useState(null);  
+  const [aiImage, setAiImage] = useState(null);  
   const [previewUrl, setPreviewUrl] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
 
-  // AI prompt modal inside add modal (sheet)
-  const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [generatingProduct, setGeneratingProduct] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
 
-  // close on ESC
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && onClose?.();
@@ -41,7 +38,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Cleanup preview urls (AI image object URL)
   useEffect(() => {
     return () => {
       if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
@@ -74,7 +70,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
 
     if (!product.releaseDate) e.releaseDate = "Release date is required";
 
-    // image upload validation only if user uploads
     if (imageFile) {
       const validTypes = ["image/jpeg", "image/png"];
       if (!validTypes.includes(imageFile.type)) {
@@ -94,7 +89,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
 
     setImageFile(file || null);
 
-    // if user uploads, clear AI image
     if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
     setAiImage(null);
 
@@ -114,7 +108,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
     setPreviewUrl(url);
   };
 
-  // ✅ AI: generate description
   const generateDescription = async () => {
     if (!canGenerateDescription) return;
     setGeneratingDescription(true);
@@ -134,8 +127,7 @@ export default function AddItemModal({ open, onClose, onCreated }) {
       setGeneratingDescription(false);
     }
   };
-
-  // ✅ AI: generate image (arraybuffer)
+ 
   const generateImage = async () => {
     if (!canGenerateImage) return;
     setGeneratingImage(true);
@@ -156,7 +148,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
       const blob = new Blob([res.data], { type: "image/jpeg" });
       const url = URL.createObjectURL(blob);
 
-      // clear any user file preview url
       if (previewUrl && imageFile) URL.revokeObjectURL(previewUrl);
 
       setImageFile(null);
@@ -171,7 +162,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
     }
   };
 
-  // ✅ AI: generate full product from prompt
   const generateProductFromPrompt = async () => {
     if (!aiPrompt.trim()) return;
     setGeneratingProduct(true);
@@ -193,7 +183,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
       });
 
       setAiPrompt("");
-      setAiPromptOpen(false);
       setErrors({});
       setValidated(false);
     } catch (err) {
@@ -204,7 +193,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
     }
   };
 
-  // ✅ Submit multipart like your code
   const onSubmit = async (e) => {
     e.preventDefault();
     setValidated(true);
@@ -218,7 +206,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
 
       const formData = new FormData();
 
-      // choose image: user file > AI blob > none
       if (imageFile) {
         formData.append("imageFile", imageFile);
       } else if (aiImage?.blob) {
@@ -237,7 +224,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      // reset
       setProduct({
         name: "",
         brand: "",
@@ -260,8 +246,8 @@ export default function AddItemModal({ open, onClose, onCreated }) {
       setAiImage(null);
       setPreviewUrl("");
 
-      onCreated?.(); // refresh list
-      onClose?.();   // close modal
+      onCreated?.();  
+      onClose?.();    
     } catch (err) {
       console.error(err);
       setErrors((e) => ({
@@ -288,13 +274,11 @@ export default function AddItemModal({ open, onClose, onCreated }) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
       >
-        {/* backdrop */}
         <div
           className="absolute inset-0 bg-black/60"
           onClick={onClose}
         />
 
-        {/* modal */}
         <motion.div
           initial={{ opacity: 0, y: 18, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -309,7 +293,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
           style={{ height: "min(92dvh, 760px)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* header */}
           <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
             <div>
               <div className="text-lg font-semibold">Add New Product</div>
@@ -321,14 +304,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setAiPromptOpen(true)}
-                className="rounded-xl px-3 py-2 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition"
-              >
-                ✨ Generate with AI
-              </button>
-
-              <button
-                type="button"
                 onClick={onClose}
                 className="rounded-xl px-3 py-2 text-xs font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
@@ -337,10 +312,8 @@ export default function AddItemModal({ open, onClose, onCreated }) {
             </div>
           </div>
 
-          {/* body (scroll inside) */}
           <div className="h-[calc(100%-64px)] overflow-y-auto">
             <form onSubmit={onSubmit} className="p-4 sm:p-6">
-              {/* top error */}
               {errors._top && (
                 <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-200">
                   {errors._top}
@@ -348,7 +321,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                {/* left form */}
                 <div className="lg:col-span-7 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -457,11 +429,11 @@ export default function AddItemModal({ open, onClose, onCreated }) {
                     </div>
                   </div>
 
-                  {/* Description + AI button */}
+                 
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <label className={labelBase}>
-                        Description <span className="text-gray-400">(optional)</span>
+                        Description
                       </label>
 
                       <button
@@ -494,7 +466,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
                   </div>
                 </div>
 
-                {/* right panel: image + preview */}
                 <div className="lg:col-span-5 space-y-4">
                   <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-4">
                     <div className="flex items-center justify-between">
@@ -531,11 +502,10 @@ export default function AddItemModal({ open, onClose, onCreated }) {
                         <p className="mt-1 text-xs text-red-600">{errors.image}</p>
                       )}
                       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Upload (JPG/PNG) or generate with AI. Image is optional.
+                        Upload (JPG/PNG) or generate with AI.
                       </p>
                     </div>
 
-                    {/* Preview */}
                     {previewUrl ? (
                       <div className="mt-4">
                         <div className="flex items-center justify-between">
@@ -573,7 +543,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
                     )}
                   </div>
 
-                  {/* Submit area */}
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
@@ -596,74 +565,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
             </form>
           </div>
 
-          {/* AI prompt sheet */}
-          <AnimatePresence>
-            {aiPromptOpen && (
-              <motion.div
-                className="absolute inset-0 z-[110] flex items-center justify-center p-3 sm:p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                <div
-                  className="absolute inset-0 bg-black/60"
-                  onClick={() => setAiPromptOpen(false)}
-                />
-                <motion.div
-                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                  transition={{ duration: 0.2 }}
-                  className="relative w-full max-w-xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                    <div className="font-semibold">Generate Product with AI</div>
-                    <button
-                      onClick={() => setAiPromptOpen(false)}
-                      className="rounded-xl px-3 py-2 text-xs font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                      disabled={generatingProduct}
-                    >
-                      Close
-                    </button>
-                  </div>
-
-                  <div className="p-4 sm:p-6">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Describe the product, AI will generate fields (name, brand, description, etc.).
-                    </p>
-
-                    <textarea
-                      className={`${inputBase} mt-3`}
-                      rows={5}
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder="E.g., premium gaming laptop, RTX graphics, 32GB RAM, 1TB SSD..."
-                      disabled={generatingProduct}
-                    />
-
-                    <div className="mt-4 flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setAiPromptOpen(false)}
-                        className="rounded-xl px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                        disabled={generatingProduct}
-                      >
-                        Cancel
-                      </button>
-
-                      <button
-                        onClick={generateProductFromPrompt}
-                        disabled={generatingProduct || !aiPrompt.trim()}
-                        className="rounded-xl px-4 py-2 text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-60"
-                      >
-                        {generatingProduct ? "Generating..." : "Generate"}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
       </motion.div>
     </AnimatePresence>
