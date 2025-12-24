@@ -171,7 +171,6 @@ export default function ProductList() {
     setSortBy("default");
   };
 
-  // ✅ Smart Search API call
   const runSmartSearch = async () => {
     const q = smartQuery.trim();
     if (!q) return;
@@ -180,10 +179,7 @@ export default function ProductList() {
     setSmartLoading(true);
 
     try {
-      /**
-       * ✅ CHANGE this endpoint if needed.
-       * Current: GET /api/products/smart-search?query=...
-       */
+ 
       const res = await api.get(`/api/products/smart-search`, {
         params: { query: q },
       });
@@ -191,7 +187,6 @@ export default function ProductList() {
       const list = Array.isArray(res.data) ? res.data : [];
       setSmartResults(list);
 
-      // Fetch images for smart results if missing
       const mountedRef = { current: true };
       await Promise.allSettled(
         list.map(async (p) => {
@@ -208,7 +203,6 @@ export default function ProductList() {
     }
   };
 
-  // ✅ Clear smart search AND refetch full products again
   const clearSmartSearch = async () => {
     setSmartQuery("");
     setSmartResults(null);
@@ -217,93 +211,6 @@ export default function ProductList() {
   };
 
   const listToRender = smartResults !== null ? smartResults : filteredProducts;
-
-  const FiltersPanel = ({ isMobile = false }) => (
-    <div
-      className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 ${
-        isMobile ? "" : "sticky top-24"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Filters</h3>
-        <button
-          onClick={clearFilters}
-          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          Clear
-        </button>
-      </div>
-
-      <div className="mt-4">
-        <label className="text-xs text-gray-600 dark:text-gray-300">Search (title)</label>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by title..."
-          className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-        />
-      </div>
-
-      <div className="mt-4">
-        <label className="text-xs text-gray-600 dark:text-gray-300">Category</label>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-        >
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c === "all" ? "Select category" : c}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="mt-4">
-        <label className="text-xs text-gray-600 dark:text-gray-300">Price Range</label>
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          <input
-            value={minPrice}
-            onChange={(e) => setMinPrice(e.target.value)}
-            type="number"
-            placeholder="Min"
-            className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-          />
-          <input
-            value={maxPrice}
-            onChange={(e) => setMaxPrice(e.target.value)}
-            type="number"
-            placeholder="Max"
-            className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-          />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <label className="text-xs text-gray-600 dark:text-gray-300">Sort By</label>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:focus:border-gray-600"
-        >
-          <option value="default">Default</option>
-          <option value="priceLow">Price: Low → High</option>
-          <option value="priceHigh">Price: High → Low</option>
-          <option value="nameAZ">Name: A → Z</option>
-          <option value="nameZA">Name: Z → A</option>
-        </select>
-      </div>
-
-      {isMobile && (
-        <button
-          onClick={() => setMobileFiltersOpen(false)}
-          className="mt-4 w-full rounded-md bg-black text-white px-4 py-2 text-sm font-medium hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition"
-        >
-          Apply
-        </button>
-      )}
-    </div>
-  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -368,16 +275,6 @@ export default function ProductList() {
         </button>
       </div>
 
-      {/* Mobile filters */}
-      {mobileFiltersOpen && (
-        <div className="sm:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileFiltersOpen(false)} />
-          <div className="absolute left-3 right-3 top-20">
-            <FiltersPanel isMobile />
-          </div>
-        </div>
-      )}
-
       {/* States */}
       {loading && (
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -403,17 +300,13 @@ export default function ProductList() {
 
       {!loading && !err && (
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <aside className="hidden lg:block lg:col-span-3">
-            <FiltersPanel />
-          </aside>
+ 
 
           <section className="lg:col-span-9">
             {listToRender.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                 <h3 className="font-semibold">No products found</h3>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  Try changing filters OR smart search query.
-                </p>
+   */
               </div>
             ) : (
               <motion.div
