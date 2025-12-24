@@ -276,7 +276,6 @@ export default function ProductList() {
             {listToRender.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
                 <h3 className="font-semibold">No products found</h3>
-   */
               </div>
             ) : (
               <motion.div
