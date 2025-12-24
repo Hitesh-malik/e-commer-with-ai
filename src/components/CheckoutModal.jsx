@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../context/CartContext";
 
-export default function CheckoutModal({ open, onClose }) {
+export default function CheckoutModal({ open, onClose, imgMap = {}, placeholder }) {
   const { items, totalAmount, clearCart } = useCart();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -73,24 +73,35 @@ export default function CheckoutModal({ open, onClose }) {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {items.slice(0, 3).map((it) => (
-                      <div key={it.id} className="flex items-center gap-3">
-                        <div className="h-12 w-12 rounded-xl bg-gray-50 dark:bg-gray-900 overflow-hidden flex items-center justify-center border border-gray-200 dark:border-gray-800">
-                          {it.image ? (
-                            <img src={it.image} alt={it.title} className="h-full w-full object-contain p-2" />
-                          ) : (
-                            <span className="text-[10px] text-gray-500">No Image</span>
-                          )}
+                    {items.slice(0, 3).map((it) => {
+                      const title = it.title || it.name || "Product";
+                      const imgSrc = imgMap[it.id] || it.image || placeholder;
+
+                      return (
+                        <div key={it.id} className="flex items-center gap-3">
+                          <div className="h-12 w-12 rounded-xl bg-gray-50 dark:bg-gray-900 overflow-hidden flex items-center justify-center border border-gray-200 dark:border-gray-800">
+                            <img
+                              src={imgSrc}
+                              alt={title}
+                              className="h-full w-full object-contain p-2"
+                              onError={(e) => {
+                                if (placeholder) e.currentTarget.src = placeholder;
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold line-clamp-1">{title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Quantity: {it.qty}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Price: ₹{Number(it.price).toFixed(2)}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold line-clamp-1">{it.title}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Quantity: {it.qty}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Price: ₹{Number(it.price).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {items.length > 3 && (
                       <p className="text-xs text-gray-500 dark:text-gray-400">

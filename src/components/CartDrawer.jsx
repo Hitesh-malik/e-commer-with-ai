@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../context/CartContext";
 import CheckoutModal from "./CheckoutModal";
+import { api } from "../api/axios";
+
+const PLACEHOLDER = "https://via.placeholder.com/120x120.png?text=No+Image";
 
 export default function CartDrawer({ open, onClose }) {
   const { items, totalAmount, totalItems, removeFromCart, updateQty, clearCart } =
@@ -9,19 +12,52 @@ export default function CartDrawer({ open, onClose }) {
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  // ✅ prevent background page scrolling when drawer open
+  // ✅ store blob urls per product id
+  const [cartImgMap, setCartImgMap] = useState({});
+
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
     return () => (document.body.style.overflow = "");
   }, [open]);
 
+  // ✅ fetch images for cart items whenever items change
+  useEffect(() => {
+    let mounted = true;
+    const createdUrls = [];
+
+    const fetchImageById = async (id) => {
+      try {
+        const res = await api.get(`/product/${id}/image`, { responseType: "blob" });
+        const url = URL.createObjectURL(res.data);
+        createdUrls.push(url);
+
+        if (mounted) {
+          setCartImgMap((prev) => ({ ...prev, [id]: url }));
+        }
+      } catch (e) {
+        // 404 -> ignore
+      }
+    };
+
+    // only fetch for ids that we don't already have
+    const ids = [...new Set(items.map((i) => i.id))];
+    ids.forEach((id) => {
+      if (!cartImgMap[id]) fetchImageById(id);
+    });
+
+    return () => {
+      mounted = false;
+      createdUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+    // NOTE: cartImgMap intentionally NOT in deps to avoid loops
+  }, [items]);
+
   return (
     <>
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop */}
             <motion.div
               className="fixed inset-0 z-50 bg-black/60"
               initial={{ opacity: 0 }}
@@ -30,7 +66,6 @@ export default function CartDrawer({ open, onClose }) {
               onClick={onClose}
             />
 
-            {/* Drawer */}
             <motion.aside
               className="
                 fixed right-0 top-0 z-50
@@ -45,7 +80,6 @@ export default function CartDrawer({ open, onClose }) {
               exit={{ x: 420 }}
               transition={{ type: "spring", stiffness: 280, damping: 28 }}
             >
-              {/* ✅ Header (fixed) */}
               <div className="shrink-0 flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800">
                 <div>
                   <h3 className="text-lg font-semibold">Your Cart</h3>
@@ -62,7 +96,6 @@ export default function CartDrawer({ open, onClose }) {
                 </button>
               </div>
 
-              {/* ✅ Body scroll area ONLY */}
               <div className="flex-1 overflow-y-auto p-5">
                 {items.length === 0 ? (
                   <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-5">
@@ -73,65 +106,71 @@ export default function CartDrawer({ open, onClose }) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3"
-                      >
-                        <div className="h-16 w-16 rounded-xl bg-gray-50 dark:bg-gray-800 overflow-hidden flex items-center justify-center">
-                          {item.image ? (
+                    {items.map((item) => {
+                      const imgSrc =
+                        cartImgMap[item.id] || item.image || PLACEHOLDER;
+
+                      const title = item.title || item.name || "Product";
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3"
+                        >
+                          <div className="h-16 w-16 rounded-xl bg-gray-50 dark:bg-gray-800 overflow-hidden flex items-center justify-center">
                             <img
-                              src={item.image}
-                              alt={item.title}
+                              src={imgSrc}
+                              alt={title}
                               className="h-full w-full object-contain p-2"
+                              onError={(e) => {
+                                e.currentTarget.src = PLACEHOLDER;
+                              }}
                             />
-                          ) : (
-                            <div className="text-xs text-gray-500">No Image</div>
-                          )}
-                        </div>
+                          </div>
 
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold line-clamp-2">
-                            {item.title}
-                          </p>
-                          <p className="mt-1 text-sm font-bold">
-                            ₹{Number(item.price).toFixed(2)}
-                          </p>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold line-clamp-2">
+                              {title}
+                            </p>
 
-                          <div className="mt-2 flex items-center gap-2">
-                            <button
-                              onClick={() => updateQty(item.id, item.qty - 1)}
-                              className="h-8 w-8 rounded-md border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            >
-                              −
-                            </button>
+                            <p className="mt-1 text-sm font-bold">
+                              ₹{Number(item.price).toFixed(2)}
+                            </p>
 
-                            <span className="min-w-8 text-center text-sm">
-                              {item.qty}
-                            </span>
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                onClick={() => updateQty(item.id, item.qty - 1)}
+                                className="h-8 w-8 rounded-md border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              >
+                                −
+                              </button>
 
-                            <button
-                              onClick={() => updateQty(item.id, item.qty + 1)}
-                              className="h-8 w-8 rounded-md border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            >
-                              +
-                            </button>
+                              <span className="min-w-8 text-center text-sm">
+                                {item.qty}
+                              </span>
 
-                            <button
-                              onClick={() => removeFromCart(item.id)}
-                              className="ml-auto text-xs text-red-600 dark:text-red-400 hover:underline"
-                            >
-                              Remove
-                            </button>
+                              <button
+                                onClick={() => updateQty(item.id, item.qty + 1)}
+                                className="h-8 w-8 rounded-md border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              >
+                                +
+                              </button>
+
+                              <button
+                                onClick={() => removeFromCart(item.id)}
+                                className="ml-auto text-xs text-red-600 dark:text-red-400 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* ✅ Footer (fixed) */}
               <div className="shrink-0 p-5 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-300">

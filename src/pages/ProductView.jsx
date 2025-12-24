@@ -1,70 +1,78 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/axios";
 import { motion } from "framer-motion";
 import { useCart } from "../context/CartContext";
+import EditProductModal from "../components/EditProductModal";
 
-const PLACEHOLDER =
-  "https://via.placeholder.com/700x700.png?text=No+Image";
+const PLACEHOLDER = "https://via.placeholder.com/700x700.png?text=No+Image";
 
 export default function ProductView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToCart } = useCart();
 
+  const [editOpen, setEditOpen] = useState(false);
+
   const [product, setProduct] = useState(null);
-  const [imageUrl, setImageUrl] = useState(""); 
+  const [imageUrl, setImageUrl] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const [updateTrigger, setUpdateTrigger] = useState(false);
+
+  const refreshProduct = useCallback(async () => {
     let objectUrl = null;
 
-    const fetchImage = async () => {
+    try {
+      setErr("");
+      setLoading(true);
+
+      const res = await api.get(`/product/${id}`);
+      setProduct(res.data);
+
       try {
-        const res = await api.get(`/product/${id}/image`, {
+        const imgRes = await api.get(`/product/${id}/image`, {
           responseType: "blob",
         });
 
-        objectUrl = URL.createObjectURL(res.data);
-        if (mounted) setImageUrl(objectUrl);
+        objectUrl = URL.createObjectURL(imgRes.data);
+        setImageUrl(objectUrl);
       } catch (error) {
-        // image might not exist -> keep placeholder
         console.warn("No image for this product or error loading image", error);
-        if (mounted) setImageUrl("");
+        setImageUrl("");
       }
-    };
-
-    const fetchProduct = async () => {
-      try {
-        setErr("");
-        setLoading(true);
-
-        // ✅ product API (your shared style)
-        const res = await api.get(`/product/${id}`);
-        if (!mounted) return;
-
-        setProduct(res.data);
-
-        // ✅ after product load fetch image
-        fetchImage();
-      } catch (error) {
-        console.error("Error fetching product:", error);
-        if (mounted) setErr("Failed to load product.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    fetchProduct();
+    } catch (error) {
+      console.error("Error fetching product:", error);
+      setErr("Failed to load product.");
+    } finally {
+      setLoading(false);
+    }
 
     return () => {
-      mounted = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [id]);
+
+ 
+  useEffect(() => {
+    let cleanup = null;
+    let mounted = true;
+
+    (async () => {
+      const c = await refreshProduct();
+      if (!mounted) c?.();
+      else cleanup = c;
+    })();
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [refreshProduct, updateTrigger]);
 
   const onDelete = async () => {
     if (!product) return;
@@ -76,10 +84,7 @@ export default function ProductView() {
 
     try {
       setDeleting(true);
-
-      // ✅ delete API (your shared style)
       await api.delete(`/product/${id}`);
-
       navigate("/products");
     } catch (error) {
       console.error("Error deleting product:", error);
@@ -129,7 +134,6 @@ export default function ProductView() {
           transition={{ duration: 0.35 }}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* ✅ IMAGE from fetchImage(blob) */}
             <motion.div
               className="aspect-square rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden"
               initial={{ opacity: 0, scale: 0.97 }}
@@ -143,7 +147,6 @@ export default function ProductView() {
               />
             </motion.div>
 
-            {/* DETAILS */}
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-3 py-1 text-xs text-gray-700 dark:text-gray-200">
                 <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -165,7 +168,6 @@ export default function ProductView() {
                 {product.description}
               </p>
 
-              {/* Buttons */}
               <div className="mt-7 flex flex-wrap gap-3">
                 <button
                   onClick={() => addToCart(product)}
@@ -175,7 +177,7 @@ export default function ProductView() {
                 </button>
 
                 <button
-                  onClick={() => navigate(`/products/${product.id}/edit`)}
+                  onClick={() => setEditOpen(true)}
                   className="rounded-md border border-blue-300 dark:border-blue-700 px-5 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition"
                 >
                   Update
@@ -193,6 +195,15 @@ export default function ProductView() {
           </div>
         </motion.div>
       )}
+
+      <EditProductModal
+        open={editOpen}
+        productId={id}
+        onClose={() => setEditOpen(false)}
+        onUpdated={async () => {
+          setUpdateTrigger((v) => !v);
+        }}
+      />
     </div>
   );
 }
