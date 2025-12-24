@@ -36,7 +36,7 @@ export default function Navbar() {
         <nav className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <NavLink to="/" className="text-lg font-bold tracking-wide">
-              E-Commer
+              E-commerce
             </NavLink>
           </div>
 
