@@ -162,36 +162,6 @@ export default function AddItemModal({ open, onClose, onCreated }) {
     }
   };
 
-  const generateProductFromPrompt = async () => {
-    if (!aiPrompt.trim()) return;
-    setGeneratingProduct(true);
-    try {
-      const res = await api.post(
-        `${baseUrl}/api/product/generate-product?query=${encodeURIComponent(aiPrompt)}`
-      );
-
-      const p = res.data || {};
-      setProduct({
-        name: p.name || "",
-        brand: p.brand || "",
-        description: p.description || "",
-        price: p.price || "",
-        category: p.category || "",
-        stockQuantity: p.stockQuantity || "",
-        releaseDate: p.releaseDate || "",
-        productAvailable: Boolean(p.productAvailable),
-      });
-
-      setAiPrompt("");
-      setErrors({});
-      setValidated(false);
-    } catch (err) {
-      console.error(err);
-      setErrors((e) => ({ ...e, _top: "Failed to generate product." }));
-    } finally {
-      setGeneratingProduct(false);
-    }
-  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -241,7 +211,7 @@ export default function AddItemModal({ open, onClose, onCreated }) {
 
       if (aiImage?.url) URL.revokeObjectURL(aiImage.url);
       if (previewUrl && imageFile) URL.revokeObjectURL(previewUrl);
-
+       localStorage.setItem('new_product', JSON.stringify('true'));
       setImageFile(null);
       setAiImage(null);
       setPreviewUrl("");

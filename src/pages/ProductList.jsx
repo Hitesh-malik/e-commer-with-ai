@@ -11,7 +11,7 @@ export default function ProductList() {
   const { addToCart } = useCart();
 
   const [products, setProducts] = useState([]);
-  const [imgMap, setImgMap] = useState({}); 
+  const [imgMap, setImgMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -20,12 +20,11 @@ export default function ProductList() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortBy, setSortBy] = useState("default");
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [smartQuery, setSmartQuery] = useState("");
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartError, setSmartError] = useState("");
-  const [smartResults, setSmartResults] = useState(null);  
+  const [smartResults, setSmartResults] = useState(null);
 
 
   const revokeAllObjectUrls = useCallback(() => {
@@ -66,7 +65,7 @@ export default function ProductList() {
       const res = await api.get("/products");
       const list = Array.isArray(res.data) ? res.data : [];
       setProducts(list);
-
+      localStorage.setItem('new_product', JSON.stringify('false'));
       const mountedRef = { current: true };
       await Promise.allSettled(list.map((p) => fetchImageById(p.id, mountedRef)));
     } catch {
@@ -110,6 +109,13 @@ export default function ProductList() {
     };
   }, [fetchImageById, revokeAllObjectUrls]);
 
+  useEffect(() => {
+    const newProductFlag = localStorage.getItem('new_product');
+    if (newProductFlag === 'true') {
+      fetchAllProducts();
+    }
+  })
+
   const filteredProducts = useMemo(() => {
     let list = [...products];
 
@@ -150,7 +156,7 @@ export default function ProductList() {
     return list;
   }, [products, search, category, minPrice, maxPrice, sortBy]);
 
- 
+
   const runSmartSearch = async () => {
     const q = smartQuery.trim();
     if (!q) return;
@@ -159,7 +165,7 @@ export default function ProductList() {
     setSmartLoading(true);
 
     try {
- 
+
       const res = await api.get(`/products/smart-search`, {
         params: { query: q },
       });
@@ -270,7 +276,7 @@ export default function ProductList() {
 
       {!loading && !err && (
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
- 
+
 
           <section className="lg:col-span-9">
             {listToRender.length === 0 ? (
